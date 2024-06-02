@@ -16,16 +16,33 @@ from telegram.ext import (
 
 import google.generativeai as genai
 
-print(os.environ)
-
 # Configure logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
+# Function to get secret from Docker secret file
+def get_docker_secret(secret_name):
+    try:
+        with open(f'/run/secrets/{secret_name}', 'r') as secret_file:
+            return secret_file.read().strip()
+    except FileNotFoundError:
+        return None
+
+# Function to get secret value
+def get_secret(secret_name):
+    secret_value = os.getenv(secret_name)
+    if secret_value is None:
+        # Try to get from Docker secret
+        secret_value = get_docker_secret(secret_name)
+    if secret_value is None:
+        raise ValueError(f"No {secret_name} found in environment variables or Docker secrets!")
+    return secret_value
+
 # Set up Gemini API
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+gemini_api_key = get_secret("GEMINI_API_KEY")
+genai.configure(api_key=gemini_api_key)
 
 # Model configuration
 generation_config = {
@@ -134,7 +151,6 @@ async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         history = history[-MAX_HISTORY:]
 
         # Create a new chat session
-        print(history)
         chat_session = model.start_chat(history=history)
 
         response = chat_session.send_message(user_message)
@@ -151,17 +167,17 @@ async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def process_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-  user_id = update.effective_user.id
-  message = update.message
-  bot = context.application.bot
+    user_id = update.effective_user.id
+    message = update.message
+    bot = context.application.bot
 
-  # Determine the model (public vs private)
-  if message.chat.type != "private":
-      model = gemini_flash_model
-  else:
-      model = gemini_pro_model
+    # Determine the model (public vs private)
+    if message.chat.type != "private":
+        model = gemini_flash_model
+    else:
+        model = gemini_pro_model
 
-  try:
+    try:
         file = message.photo[-1]  # Get the last photo file
         file_id = file.file_id
 
@@ -198,20 +214,15 @@ async def process_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             response.text, chat_id=sent_message.chat.id, message_id=sent_message.message_id
         )
 
-  except Exception as e:
-      logger.error(f"Error processing image: {e}")
-      await update.message.reply_text(ERROR_INFO)
+    except Exception as e:
+        logger.error(f"Error processing image: {e}")
+        await update.message.reply_text(ERROR_INFO)
 
 
 # --- Main Function ---
 def main() -> None:
 
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    
-    if not token:
-        raise ValueError("No TELEGRAM_BOT_TOKEN environment variable found!")
-    
-    print(f"Telegram Token: {token}")
+    token = get_secret("TELEGRAM_BOT_TOKEN")
 
     """Start the bot."""
     application = (

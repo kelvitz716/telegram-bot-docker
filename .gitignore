@@ -1,1 +1,4 @@
 .env
+telegram-bot-docker\gemini_api_key.txt
+telegram-bot-docker\telegram_bot_token.txt
+telegram-bot-docker\test-docker.pem
